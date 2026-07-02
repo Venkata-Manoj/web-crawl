@@ -22,7 +22,22 @@ python cloner.py https://example.com --js                       # JS render mode
 python cloner.py https://example.com --all-domains --delay 0.5  # follow other domains, throttle
 ```
 
-There is no test suite or linter configured. Verify changes by cloning a real site and inspecting the output — `https://books.toscrape.com` (static, has CSS/fonts/images) and `https://remotelyavailable.com` (Next.js/React) are the known reference cases.
+## Tests
+
+52 unit tests live in [`tests/test_cloner.py`](tests/test_cloner.py) covering:
+- URL normalization & slugging
+- Domain/link-type detection
+- Path traversal protection
+- IP/SSRF safety checks
+- BFS crawl behaviour (mocked integration)
+
+Run them with:
+
+```powershell
+python -m unittest discover tests -v
+```
+
+Linters (`flake8`, `black`, `mypy`) are listed in `requirements.txt`.
 
 When testing in PowerShell, set `$env:PYTHONIOENCODING="utf-8"` first to avoid Unicode log errors, and clean up generated output folders (`cloned_sites/`, ad-hoc `-o` dirs) afterward.
 

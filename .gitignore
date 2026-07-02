@@ -12,6 +12,9 @@ wvenv/
 # Cloner output (default directory)
 cloned_sites/
 
+# Test output (from manual tests)
+test_clone_*
+
 # IDE
 .vscode/
 .idea/

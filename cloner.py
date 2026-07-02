@@ -19,7 +19,7 @@ import threading
 from collections import deque
 from typing import Dict, Optional, Set
 import urllib.robotparser
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import unquote_plus, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -177,17 +177,26 @@ class WebsiteCloner:
         return True
 
     def _local_path_for(self, url: str, content_type: Optional[str] = None) -> str:
-        """Map URL to local file path (centralized, deterministic)."""
+        """Map URL to local file path (centralized, deterministic).
+
+        Handles URL-encoded query strings (%3F in path → real query separator),
+        so filenames stay clean even when upstream CSS uses url('font.woff?v=...').
+        """
         if url in self.url_to_local:
             return self.url_to_local[url]
 
         parsed = urlparse(url)
-        path = parsed.path
+        # Unquote the path first to handle %3F (encoded '?') that some CDNs
+        # embed for cache-busting — urlparse treats it as part of the path,
+        # which makes splitext see a bogus extension like .woff%3Fv=3.2.1
+        clean_path = unquote_plus(parsed.path)
+        if "?" in clean_path:
+            clean_path = clean_path.split("?")[0]
 
-        if not path or path == "/":
+        if not clean_path or clean_path == "/":
             local_path = "index.html"
         else:
-            local_path = path.lstrip("/")
+            local_path = clean_path.lstrip("/")
 
         ext = os.path.splitext(local_path)[1].lower()
 
@@ -212,7 +221,7 @@ class WebsiteCloner:
         stays within self.output_dir. If traversal is detected,
         the path is hashed to a safe name.
         """
-        full_path = os.path.normpath(os.path.join(self.output_dir, local_path))
+        full_path = os.path.abspath(os.path.join(self.output_dir, local_path))
         output_dir_abs = os.path.abspath(self.output_dir)
         if os.path.commonpath([full_path, output_dir_abs]) != output_dir_abs:
             ext = os.path.splitext(local_path)[1]
