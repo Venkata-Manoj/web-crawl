@@ -1,0 +1,8 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E203, W503
+# app.py embeds an HTML/CSS template (long <style> lines inside a string
+# literal that black cannot wrap). Relax only E501 there; all other code
+# stays strictly at 120 chars.
+per-file-ignores =
+    app.py: E501

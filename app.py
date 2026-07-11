@@ -262,6 +262,7 @@ PAGE = """<!DOCTYPE html>
 
 def run_clone_job(job_id: str, config: dict):
     """Run a clone job in a background thread."""
+
     def progress(cloned, total, url):
         with JOBS_LOCK:
             if job_id in JOBS:
@@ -365,7 +366,9 @@ def download_zip(job_id):
     return Response(
         zip_buffer.getvalue(),
         mimetype="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{os.path.basename(output_dir)}.zip"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{os.path.basename(output_dir)}.zip"'
+        },
     )
 
 
@@ -386,7 +389,7 @@ def view_output(job_id):
         return Response(
             content,
             content_type="text/html",
-            headers={"Content-Security-Policy": "script-src 'none'; sandbox"}
+            headers={"Content-Security-Policy": "script-src 'none'; sandbox"},
         )
 
     files = []
@@ -399,12 +402,12 @@ def view_output(job_id):
     html = f"<html><head><title>{output_dir}</title></head><body>"
     html += f"<h1>{output_dir}</h1><ul>"
     for f in files:
-        html += f'<li>{f}</li>'
+        html += f"<li>{f}</li>"
     html += "</ul></body></html>"
     return Response(
         html,
         content_type="text/html",
-        headers={"Content-Security-Policy": "script-src 'none'; sandbox"}
+        headers={"Content-Security-Policy": "script-src 'none'; sandbox"},
     )
 
 

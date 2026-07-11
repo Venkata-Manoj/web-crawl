@@ -10,10 +10,10 @@ from unittest import mock
 
 from cloner import WebsiteCloner
 
-
 # =============================================================================
 # _normalize_url
 # =============================================================================
+
 
 class TestNormalizeUrl(unittest.TestCase):
     """_normalize_url strips fragments, preserves query strings, removes trailing slashes."""
@@ -29,12 +29,16 @@ class TestNormalizeUrl(unittest.TestCase):
     def test_preserves_query_strings(self):
         """?foo=bar is kept."""
         url = "http://example.com/page?foo=bar"
-        self.assertEqual(self.cloner._normalize_url(url), "http://example.com/page?foo=bar")
+        self.assertEqual(
+            self.cloner._normalize_url(url), "http://example.com/page?foo=bar"
+        )
 
     def test_preserves_query_with_fragment(self):
         """Fragment stripped, query kept when both present."""
         url = "http://example.com/page?foo=bar#section"
-        self.assertEqual(self.cloner._normalize_url(url), "http://example.com/page?foo=bar")
+        self.assertEqual(
+            self.cloner._normalize_url(url), "http://example.com/page?foo=bar"
+        )
 
     def test_removes_trailing_slash(self):
         """/page/ becomes /page."""
@@ -55,6 +59,7 @@ class TestNormalizeUrl(unittest.TestCase):
 # =============================================================================
 # _is_same_domain
 # =============================================================================
+
 
 class TestIsSameDomain(unittest.TestCase):
     """_is_same_domain checks URL belongs to the start domain."""
@@ -86,6 +91,7 @@ class TestIsSameDomain(unittest.TestCase):
 # =============================================================================
 # _is_html_link
 # =============================================================================
+
 
 class TestIsHtmlLink(unittest.TestCase):
     """_is_html_link detects whether a URL links to an HTML page."""
@@ -142,6 +148,7 @@ class TestIsHtmlLink(unittest.TestCase):
 # _local_path_for
 # =============================================================================
 
+
 class TestLocalPathFor(unittest.TestCase):
     """_local_path_for maps URLs to deterministic local file paths."""
 
@@ -151,29 +158,25 @@ class TestLocalPathFor(unittest.TestCase):
     def test_root_maps_to_index_html(self):
         """Root URL → index.html."""
         self.assertEqual(
-            self.cloner._local_path_for("http://example.com/"),
-            "index.html"
+            self.cloner._local_path_for("http://example.com/"), "index.html"
         )
 
     def test_about_maps_to_about_html(self):
         """/about → about.html (no extension → .html appended)."""
         self.assertEqual(
-            self.cloner._local_path_for("http://example.com/about"),
-            "about.html"
+            self.cloner._local_path_for("http://example.com/about"), "about.html"
         )
 
     def test_preserves_known_extension_css(self):
         """.css extension is preserved."""
         self.assertEqual(
-            self.cloner._local_path_for("http://example.com/style.css"),
-            "style.css"
+            self.cloner._local_path_for("http://example.com/style.css"), "style.css"
         )
 
     def test_preserves_known_extension_js(self):
         """.js extension is preserved."""
         self.assertEqual(
-            self.cloner._local_path_for("http://example.com/app.js"),
-            "app.js"
+            self.cloner._local_path_for("http://example.com/app.js"), "app.js"
         )
 
     def test_uses_content_type_when_no_extension_json(self):
@@ -182,7 +185,7 @@ class TestLocalPathFor(unittest.TestCase):
             self.cloner._local_path_for(
                 "http://example.com/data", content_type="application/json"
             ),
-            "data.json"
+            "data.json",
         )
 
     def test_uses_content_type_when_no_extension_css(self):
@@ -191,7 +194,7 @@ class TestLocalPathFor(unittest.TestCase):
             self.cloner._local_path_for(
                 "http://example.com/styles", content_type="text/css"
             ),
-            "styles.css"
+            "styles.css",
         )
 
     def test_content_type_with_charset(self):
@@ -200,14 +203,14 @@ class TestLocalPathFor(unittest.TestCase):
             self.cloner._local_path_for(
                 "http://example.com/page", content_type="text/html; charset=utf-8"
             ),
-            "page.html"
+            "page.html",
         )
 
     def test_nested_path_preserved(self):
         """/blog/post → blog/post.html (directory structure kept)."""
         self.assertEqual(
             self.cloner._local_path_for("http://example.com/blog/post"),
-            "blog/post.html"
+            "blog/post.html",
         )
 
     def test_cached_result_returned(self):
@@ -219,14 +222,14 @@ class TestLocalPathFor(unittest.TestCase):
     def test_known_extensions_not_replaced(self):
         """Known extension .jpeg is preserved even without content_type."""
         self.assertEqual(
-            self.cloner._local_path_for("http://example.com/photo.jpeg"),
-            "photo.jpeg"
+            self.cloner._local_path_for("http://example.com/photo.jpeg"), "photo.jpeg"
         )
 
 
 # =============================================================================
 # _safe_path
 # =============================================================================
+
 
 class TestSafePath(unittest.TestCase):
     """_safe_path prevents path traversal attacks."""
@@ -235,8 +238,7 @@ class TestSafePath(unittest.TestCase):
         # Use an absolute path for output_dir so os.path.commonpath
         # doesn't fail with "Can't mix absolute and relative paths".
         self.temp_dir = tempfile.mkdtemp()
-        self.cloner = WebsiteCloner("http://example.com",
-                                    output_dir=self.temp_dir)
+        self.cloner = WebsiteCloner("http://example.com", output_dir=self.temp_dir)
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -247,10 +249,7 @@ class TestSafePath(unittest.TestCase):
 
     def test_nested_path_preserved(self):
         """Nested directory structure is preserved."""
-        self.assertEqual(
-            self.cloner._safe_path("blog/post.html"),
-            "blog/post.html"
-        )
+        self.assertEqual(self.cloner._safe_path("blog/post.html"), "blog/post.html")
 
     def test_path_traversal_gets_hashed(self):
         """../../../etc/passwd is hashed to a safe name (no extension)."""
@@ -275,44 +274,45 @@ class TestSafePath(unittest.TestCase):
 # _is_private_ip
 # =============================================================================
 
+
 class TestIsPrivateIp(unittest.TestCase):
     """_is_private_ip detects private/loopback/link-local IPs."""
 
     def setUp(self):
         self.cloner = WebsiteCloner("http://example.com")
 
-    @mock.patch('socket.gethostbyname')
+    @mock.patch("socket.gethostbyname")
     def test_loopback_detected(self, mock_gethostbyname):
         """127.0.0.1 is loopback → True."""
         mock_gethostbyname.return_value = "127.0.0.1"
         self.assertTrue(self.cloner._is_private_ip("http://127.0.0.1/page"))
 
-    @mock.patch('socket.gethostbyname')
+    @mock.patch("socket.gethostbyname")
     def test_private_10_dot_0_detected(self, mock_gethostbyname):
         """10.0.0.1 is private → True."""
         mock_gethostbyname.return_value = "10.0.0.1"
         self.assertTrue(self.cloner._is_private_ip("http://10.0.0.1/page"))
 
-    @mock.patch('socket.gethostbyname')
+    @mock.patch("socket.gethostbyname")
     def test_private_192_dot_168_detected(self, mock_gethostbyname):
         """192.168.1.1 is private → True."""
         mock_gethostbyname.return_value = "192.168.1.1"
         self.assertTrue(self.cloner._is_private_ip("http://192.168.1.1/page"))
 
-    @mock.patch('socket.gethostbyname')
+    @mock.patch("socket.gethostbyname")
     def test_link_local_detected(self, mock_gethostbyname):
         """169.254.1.1 is link-local → True."""
         mock_gethostbyname.return_value = "169.254.1.1"
         self.assertTrue(self.cloner._is_private_ip("http://169.254.1.1/page"))
 
-    @mock.patch('socket.gethostbyname')
+    @mock.patch("socket.gethostbyname")
     def test_public_ip_returns_false(self, mock_gethostbyname):
         """93.184.216.34 (example.com) is public → False."""
         mock_gethostbyname.return_value = "93.184.216.34"
         self.assertFalse(self.cloner._is_private_ip("http://example.com/page"))
         mock_gethostbyname.assert_called_with("example.com")
 
-    @mock.patch('socket.gethostbyname')
+    @mock.patch("socket.gethostbyname")
     def test_dns_failure_returns_false(self, mock_gethostbyname):
         """gethostbyname raising gaierror → False."""
         mock_gethostbyname.side_effect = socket.gaierror
@@ -326,6 +326,7 @@ class TestIsPrivateIp(unittest.TestCase):
 # =============================================================================
 # BFS crawl behavior
 # =============================================================================
+
 
 class TestBfsCrawlBehavior(unittest.TestCase):
     """Integration-style tests for WebsiteCloner.clone() — all network mocked."""
@@ -341,27 +342,26 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """Build a minimal HTML page with <a> tags for each link."""
         if links is None:
             links = []
-        link_tags = "\n".join(
-            f'<a href="{link}">{link}</a>' for link in links
-        )
+        link_tags = "\n".join(f'<a href="{link}">{link}</a>' for link in links)
         return f"<html><head></head><body>{body}\n{link_tags}</body></html>"
 
-    def _make_cloner(self, url="http://example.com", max_pages=5,
-                     follow_domains=False, **kwargs):
+    def _make_cloner(
+        self, url="http://example.com", max_pages=5, follow_domains=False, **kwargs
+    ):
         return WebsiteCloner(
             seed_url=url,
             output_dir=self.temp_dir,
             max_pages=max_pages,
             follow_domains=follow_domains,
-            delay=0,        # no delay in tests
-            **kwargs
+            delay=0,  # no delay in tests
+            **kwargs,
         )
 
     # -- helpers for common mock setup --------------------------------
 
     def _mock_fetch(self, cloner, responses):
         """Patch _fetch_page to return canned HTML from a URL→html dict."""
-        patcher = mock.patch.object(cloner, '_fetch_page')
+        patcher = mock.patch.object(cloner, "_fetch_page")
         mock_fetch = patcher.start()
         mock_fetch.side_effect = lambda url: responses.get(url)
         self.addCleanup(patcher.stop)
@@ -369,8 +369,9 @@ class TestBfsCrawlBehavior(unittest.TestCase):
 
     def _mock_assets(self, cloner):
         """Patch _download_asset to return fake content."""
-        patcher = mock.patch.object(cloner, '_download_asset',
-                                    return_value=b"fake-content")
+        patcher = mock.patch.object(
+            cloner, "_download_asset", return_value=b"fake-content"
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -380,10 +381,13 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """Seed URL is the first URL fetched."""
         cloner = self._make_cloner(max_pages=2)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(links=["/about"]),
-            "http://example.com/about": self._make_html(),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/about"]),
+                "http://example.com/about": self._make_html(),
+            },
+        )
         cloner.clone()
         mock_fetch.assert_any_call("http://example.com/")
 
@@ -391,11 +395,14 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """Same-domain links found on page are also fetched."""
         cloner = self._make_cloner(max_pages=5)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(links=["/about", "/contact"]),
-            "http://example.com/about": self._make_html(),
-            "http://example.com/contact": self._make_html(),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/about", "/contact"]),
+                "http://example.com/about": self._make_html(),
+                "http://example.com/contact": self._make_html(),
+            },
+        )
         cloner.clone()
         mock_fetch.assert_any_call("http://example.com/")
         mock_fetch.assert_any_call("http://example.com/about")
@@ -405,9 +412,12 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """Fetch stops after max_pages even if more URLs are queued."""
         cloner = self._make_cloner(max_pages=1)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(links=["/about", "/contact"]),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/about", "/contact"]),
+            },
+        )
         cloner.clone()
         self.assertEqual(mock_fetch.call_count, 1)
 
@@ -415,11 +425,12 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """External links are ignored when follow_domains=False."""
         cloner = self._make_cloner(max_pages=5, follow_domains=False)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(
-                links=["http://other.com/page"]
-            ),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["http://other.com/page"]),
+            },
+        )
         cloner.clone()
         mock_fetch.assert_called_once_with("http://example.com/")
 
@@ -427,12 +438,13 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """External links are followed when follow_domains=True."""
         cloner = self._make_cloner(max_pages=5, follow_domains=True)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(
-                links=["http://other.com/page"]
-            ),
-            "http://other.com/page": self._make_html(),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["http://other.com/page"]),
+                "http://other.com/page": self._make_html(),
+            },
+        )
         cloner.clone()
         mock_fetch.assert_any_call("http://other.com/page")
 
@@ -440,10 +452,13 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """Duplicate links to the same URL are fetched only once."""
         cloner = self._make_cloner(max_pages=5)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(links=["/about", "/about"]),
-            "http://example.com/about": self._make_html(),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/about", "/about"]),
+                "http://example.com/about": self._make_html(),
+            },
+        )
         cloner.clone()
         self.assertEqual(mock_fetch.call_count, 2)
 
@@ -461,7 +476,7 @@ class TestBfsCrawlBehavior(unittest.TestCase):
                 "http://example.com/page2": self._make_html(),
             }.get(url)
 
-        with mock.patch.object(cloner, '_fetch_page') as mock_fetch:
+        with mock.patch.object(cloner, "_fetch_page") as mock_fetch:
             mock_fetch.side_effect = track
             cloner.clone()
 
@@ -475,12 +490,15 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         """Cloner stops mid-crawl when max_pages is reached."""
         cloner = self._make_cloner(max_pages=2)
         self._mock_assets(cloner)
-        mock_fetch = self._mock_fetch(cloner, {
-            "http://example.com/": self._make_html(links=["/page1", "/page2"]),
-            "http://example.com/page1": self._make_html(links=["/page3"]),
-            "http://example.com/page2": self._make_html(),
-            "http://example.com/page3": self._make_html(),
-        })
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/page1", "/page2"]),
+                "http://example.com/page1": self._make_html(links=["/page3"]),
+                "http://example.com/page2": self._make_html(),
+                "http://example.com/page3": self._make_html(),
+            },
+        )
         cloner.clone()
         # max_pages=2 → seed + page1 (page3 is included in page1's HTML but
         # page3's fetch is never called because cloner stops at 2)

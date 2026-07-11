@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 
 try:
     from playwright.sync_api import sync_playwright
+
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
@@ -65,10 +66,33 @@ CONTENT_TYPE_EXT = {
 }
 
 KNOWN_EXTS = {
-    ".html", ".htm", ".css", ".js", ".json", ".png", ".jpg", ".jpeg",
-    ".gif", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".otf",
-    ".eot", ".mp3", ".ogg", ".mp4", ".webm", ".pdf", ".zip", ".xml",
-    ".php", ".asp", ".aspx",
+    ".html",
+    ".htm",
+    ".css",
+    ".js",
+    ".json",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".ico",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+    ".mp3",
+    ".ogg",
+    ".mp4",
+    ".webm",
+    ".pdf",
+    ".zip",
+    ".xml",
+    ".php",
+    ".asp",
+    ".aspx",
 }
 
 ASSET_ATTRS = {
@@ -131,17 +155,18 @@ class WebsiteCloner:
         self._last_modified: dict[str, str] = {}
 
         self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": (
-                "text/html,application/xhtml+xml,application/xml;"
-                "q=0.9,*/*;q=0.8"
-            ),
-            "Accept-Language": "en-US,en;q=0.5",
-        })
+        self.session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": (
+                    "text/html,application/xhtml+xml,application/xml;" "q=0.9,*/*;q=0.8"
+                ),
+                "Accept-Language": "en-US,en;q=0.5",
+            }
+        )
 
         # Shared Playwright browser (lazily initialized, reused across fetches)
         self._pw_playwright = None
@@ -150,10 +175,9 @@ class WebsiteCloner:
     def _normalize_url(self, url: str) -> str:
         """Normalize URL by removing fragment, query, and trailing slash."""
         parsed = urlparse(url)
-        normalized = urlunparse(parsed._replace(
-            fragment="",
-            path=parsed.path.rstrip("/") or "/"
-        ))
+        normalized = urlunparse(
+            parsed._replace(fragment="", path=parsed.path.rstrip("/") or "/")
+        )
         return normalized
 
     def _is_same_domain(self, url: str) -> bool:
@@ -261,11 +285,15 @@ class WebsiteCloner:
                     return resp.text
                 return None
             except requests.RequestException as e:
-                logger.warning(f"Attempt {attempt+1}/{self.max_retries} failed for {url}: {e}")
+                logger.warning(
+                    f"Attempt {attempt+1}/{self.max_retries} failed for {url}: {e}"
+                )
                 if attempt == self.max_retries - 1:
-                    logger.error(f"Failed to fetch {url} after {self.max_retries} attempts")
+                    logger.error(
+                        f"Failed to fetch {url} after {self.max_retries} attempts"
+                    )
                     return None
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
         return None
 
     def _get_playwright_browser(self):
@@ -299,15 +327,19 @@ class WebsiteCloner:
 
             try:
                 try:
-                    page.goto(url, wait_until="networkidle",
-                              timeout=min(self.timeout * 1000, 15000))
+                    page.goto(
+                        url,
+                        wait_until="networkidle",
+                        timeout=min(self.timeout * 1000, 15000),
+                    )
                 except Exception:
                     logger.debug(
                         f"  networkidle timeout for {url}, "
                         "falling back to domcontentloaded"
                     )
-                    page.goto(url, wait_until="domcontentloaded",
-                              timeout=self.timeout * 1000)
+                    page.goto(
+                        url, wait_until="domcontentloaded", timeout=self.timeout * 1000
+                    )
 
                 self._scroll_page(page)
                 self._wait_for_dynamic_content(page)
@@ -368,7 +400,9 @@ class WebsiteCloner:
         except Exception:
             pass
 
-    def _download_asset(self, url: str, content_type: Optional[str] = None) -> Optional[bytes]:
+    def _download_asset(
+        self, url: str, content_type: Optional[str] = None
+    ) -> Optional[bytes]:
         """Download an asset and return its content."""
         if url in self.assets_downloaded:
             return None
@@ -386,7 +420,9 @@ class WebsiteCloner:
                 elif url in self._last_modified:
                     headers["If-Modified-Since"] = self._last_modified[url]
 
-                resp = self.session.get(url, timeout=self.timeout, stream=True, headers=headers)
+                resp = self.session.get(
+                    url, timeout=self.timeout, stream=True, headers=headers
+                )
                 if resp.status_code == 304:
                     self.assets_downloaded.add(url)
                     return None
@@ -415,11 +451,12 @@ class WebsiteCloner:
                         f"{self.max_retries} attempts"
                     )
                     return None
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
         return None
 
     def _process_css(self, css_content: str, base_url: str) -> str:
         """Process CSS content, download url() and @import references."""
+
         def replace_url(match):
             url = match.group(1).strip()
             if url.startswith("data:"):
@@ -457,7 +494,9 @@ class WebsiteCloner:
         css_content = CSS_IMPORT_RE.sub(replace_import, css_content)
         return css_content
 
-    def _process_page(self, url: str, html: str, soup: Optional[BeautifulSoup] = None) -> tuple[str, list[str]]:
+    def _process_page(
+        self, url: str, html: str, soup: Optional[BeautifulSoup] = None
+    ) -> tuple[str, list[str]]:
         """Process HTML page: extract assets, download them, rewrite URLs.
 
         Returns (processed_html, page_links) so the caller can avoid
@@ -515,9 +554,14 @@ class WebsiteCloner:
                         if isinstance(rel, str):
                             rel = [rel]
                         asset_rels = {
-                            "stylesheet", "icon", "shortcut icon",
-                            "apple-touch-icon", "apple-touch-icon-precomposed",
-                            "preload", "prefetch", "dns-prefetch",
+                            "stylesheet",
+                            "icon",
+                            "shortcut icon",
+                            "apple-touch-icon",
+                            "apple-touch-icon-precomposed",
+                            "preload",
+                            "prefetch",
+                            "dns-prefetch",
                         }
                         if not asset_rels.intersection(set(rel)):
                             continue
@@ -536,9 +580,19 @@ class WebsiteCloner:
 
                     local_path = self._local_path_for(abs_url, content_type)
                     local_path = self._safe_path(local_path)
-                    is_stylesheet = tag_name == "link" and "stylesheet" in tag.get("rel", [])
+                    is_stylesheet = tag_name == "link" and "stylesheet" in tag.get(
+                        "rel", []
+                    )
                     download_tasks.append(
-                        (abs_url, content_type, local_path, tag, attr, tag_name, is_stylesheet)
+                        (
+                            abs_url,
+                            content_type,
+                            local_path,
+                            tag,
+                            attr,
+                            tag_name,
+                            is_stylesheet,
+                        )
                     )
 
         # Phase 2: download all unique assets in parallel
@@ -547,7 +601,11 @@ class WebsiteCloner:
         unique = []
         for item in download_tasks:
             abs_url = item[0]
-            if abs_url in self.assets_downloaded or abs_url.startswith("data:") or abs_url in seen:
+            if (
+                abs_url in self.assets_downloaded
+                or abs_url.startswith("data:")
+                or abs_url in seen
+            ):
                 continue
             seen.add(abs_url)
             unique.append((abs_url, item[1]))
@@ -626,9 +684,13 @@ class WebsiteCloner:
             tag.attrs.pop("crossorigin", None)
 
         # Handle <meta http-equiv="refresh"> redirects
-        meta_refresh = soup.find("meta", attrs={"http-equiv": lambda v: v and v.lower() == "refresh"})
+        meta_refresh = soup.find(
+            "meta", attrs={"http-equiv": lambda v: v and v.lower() == "refresh"}
+        )
         if meta_refresh and meta_refresh.get("content"):
-            match = re.search(r'url\s*=\s*["\']?([^"\'\s>]+)', meta_refresh["content"], re.IGNORECASE)
+            match = re.search(
+                r'url\s*=\s*["\']?([^"\'\s>]+)', meta_refresh["content"], re.IGNORECASE
+            )
             if match:
                 redirect_url = urljoin(url, match.group(1))
                 # Add to crawl queue if not visited
@@ -657,7 +719,9 @@ class WebsiteCloner:
             return []
         try:
             resp = self.session.get(sitemap_url, timeout=self.timeout)
-            if resp.status_code != 200 or "xml" not in resp.headers.get("Content-Type", ""):
+            if resp.status_code != 200 or "xml" not in resp.headers.get(
+                "Content-Type", ""
+            ):
                 return []
             soup = BeautifulSoup(resp.content, "xml")
 
@@ -726,8 +790,11 @@ class WebsiteCloner:
         while self.queue and pages_cloned < self.max_pages:
             current_url = self.queue.popleft()
 
-            if self._rp is not None and current_url != self._seed_normalized \
-                    and not self._rp.can_fetch("*", current_url):
+            if (
+                self._rp is not None
+                and current_url != self._seed_normalized
+                and not self._rp.can_fetch("*", current_url)
+            ):
                 logger.info(f"  Skipping (disallowed by robots.txt): {current_url}")
                 continue
 
@@ -824,44 +891,54 @@ Examples:
   python cloner.py https://example.com --all-domains --delay 0.5
         """,
     )
+    parser.add_argument("url", help="Seed URL to start cloning from")
     parser.add_argument(
-        "url", help="Seed URL to start cloning from"
+        "-o",
+        "--output",
+        default="cloned_sites",
+        help="Output directory (default: cloned_sites)",
     )
     parser.add_argument(
-        "-o", "--output", default="cloned_sites",
-        help="Output directory (default: cloned_sites)"
+        "-n",
+        "--max-pages",
+        type=int,
+        default=100,
+        help="Maximum pages to clone (default: 100)",
     )
     parser.add_argument(
-        "-n", "--max-pages", type=int, default=100,
-        help="Maximum pages to clone (default: 100)"
+        "--js",
+        action="store_true",
+        help="Enable JavaScript rendering (requires Playwright)",
     )
     parser.add_argument(
-        "--js", action="store_true",
-        help="Enable JavaScript rendering (requires Playwright)"
+        "--all-domains", action="store_true", help="Follow links to other domains"
     )
     parser.add_argument(
-        "--all-domains", action="store_true",
-        help="Follow links to other domains"
+        "--delay",
+        type=float,
+        default=0.2,
+        help="Delay between requests in seconds (default: 0.2)",
     )
     parser.add_argument(
-        "--delay", type=float, default=0.2,
-        help="Delay between requests in seconds (default: 0.2)"
+        "--timeout",
+        type=int,
+        default=30,
+        help="Request timeout in seconds (default: 30)",
     )
     parser.add_argument(
-        "--timeout", type=int, default=30,
-        help="Request timeout in seconds (default: 30)"
+        "--scroll-depth",
+        type=int,
+        default=5,
+        help="Max scroll iterations for lazy content (default: 5, JS mode only)",
     )
     parser.add_argument(
-        "--scroll-depth", type=int, default=5,
-        help="Max scroll iterations for lazy content (default: 5, JS mode only)"
+        "--wait-ms",
+        type=int,
+        default=2000,
+        help="Extra wait time in ms after scroll (default: 2000, JS mode only)",
     )
     parser.add_argument(
-        "--wait-ms", type=int, default=2000,
-        help="Extra wait time in ms after scroll (default: 2000, JS mode only)"
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Enable verbose logging"
+        "-v", "--verbose", action="store_true", help="Enable verbose logging"
     )
 
     args = parser.parse_args()
@@ -870,9 +947,7 @@ Examples:
         logging.getLogger().setLevel(logging.DEBUG)
 
     if args.js and not PLAYWRIGHT_AVAILABLE:
-        logger.warning(
-            "Playwright not installed. Falling back to static mode."
-        )
+        logger.warning("Playwright not installed. Falling back to static mode.")
         logger.info(
             "To enable JS rendering, run: "
             "pip install playwright && playwright install chromium"
