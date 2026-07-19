@@ -78,6 +78,10 @@ KNOWN_EXTS = {
 MAX_ASSET_SIZE: int = 52428800  # 50 MB
 MAX_TOTAL_BYTES: int = 2147483648  # 2 GB
 
+RENDER_L0 = 0
+RENDER_L1 = 1
+RENDER_L2 = 2
+
 ASSET_ATTRS = {
     "img": ["src", "srcset", "data-src", "data-srcset"],
     "script": ["src"],
@@ -108,7 +112,7 @@ class Config:
     seed_url: str
     output_dir: str = "cloned_sites"
     max_pages: int = 100
-    render_js: bool = False
+    render_level: int = 0
     follow_domains: bool = False
     delay: float = 0.2
     timeout: int = 30

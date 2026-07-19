@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .config import MAX_ASSET_SIZE, MAX_TOTAL_BYTES
+from .config import MAX_ASSET_SIZE, MAX_TOTAL_BYTES, RENDER_L1, RENDER_L2
 
 logger = logging.getLogger(__name__)
 
@@ -240,10 +240,12 @@ class PlaywrightFetcher:
         timeout: int = 30,
         scroll_depth: int = 5,
         wait_ms: int = 2000,
+        render_level: int = RENDER_L2,
     ):
         self.timeout = timeout
         self.scroll_depth = scroll_depth
         self.wait_ms = wait_ms
+        self.render_level = render_level
 
         # Lazy-initialised shared browser
         self._pw_playwright = None
@@ -319,9 +321,13 @@ class PlaywrightFetcher:
                         timeout=self.timeout * 1000,
                     )
 
-                self._scroll_page(page)
-                self._wait_for_dynamic_content(page)
-                self._intercept_api_data(page)
+                if self.render_level == RENDER_L1:
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    page.wait_for_timeout(2000)
+                elif self.render_level == RENDER_L2:
+                    self._scroll_page(page)
+                    self._wait_for_dynamic_content(page)
+                    self._intercept_api_data(page)
 
                 content = page.content()
                 return content

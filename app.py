@@ -301,6 +301,11 @@ def api_clone():
         url = "https://" + url
     data["url"] = url
 
+    # Convert render_js checkbox (backward compat) to render_level
+    if "render_js" in data:
+        data["render_level"] = 2 if data.pop("render_js") else 0
+    data.setdefault("render_level", 0)
+
     # Validate output directory to prevent path traversal
     output_dir = data.get("output", "cloned_sites")
     safe_base = os.path.abspath("cloned_sites")

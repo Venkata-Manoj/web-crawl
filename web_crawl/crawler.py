@@ -18,7 +18,7 @@ import requests
 from bs4 import BeautifulSoup
 import urllib.robotparser
 
-from .config import PLAYWRIGHT_AVAILABLE
+from .config import PLAYWRIGHT_AVAILABLE, RENDER_L0, RENDER_L1, RENDER_L2
 from .rate_limiter import DomainRateLimiter
 from .rewriter import URLRewriter
 from .storage import Storage
@@ -45,8 +45,8 @@ class WebsiteCloner:
         Directory to write the cloned site into (default ``"cloned_sites"``).
     max_pages : int
         Maximum number of HTML pages to clone.
-    render_js : bool
-        Whether to use Playwright for JS rendering.
+    render_level : int
+        Render fidelity level (0=static, 1=basic Playwright, 2=full Playwright).
     follow_domains : bool
         When True, follow links to any domain (default: same-domain only).
     delay : float
@@ -68,7 +68,7 @@ class WebsiteCloner:
         seed_url: str,
         output_dir: str = "cloned_sites",
         max_pages: int = 100,
-        render_js: bool = False,
+        render_level: int = RENDER_L0,
         follow_domains: bool = False,
         delay: float = 0,
         timeout: int = 30,
@@ -81,7 +81,7 @@ class WebsiteCloner:
         self.seed_url = seed_url
         self.output_dir = output_dir
         self.max_pages = max_pages
-        self.render_js = render_js
+        self.render_level = render_level
         self.follow_domains = follow_domains
         self.delay = delay
         self.timeout = timeout
@@ -139,6 +139,7 @@ class WebsiteCloner:
             timeout=self.timeout,
             scroll_depth=self.scroll_depth,
             wait_ms=self.wait_ms,
+            render_level=self.render_level,
         )
         self.parallel_fetcher = ParallelFetcher(max_workers=self.max_workers)
         self.css_processor = CSSProcessor(
@@ -200,7 +201,7 @@ class WebsiteCloner:
         if self._is_private_ip(url):
             logger.warning(f"Skipping page at private IP address: {url}")
             return None
-        if self.render_js and PLAYWRIGHT_AVAILABLE:
+        if self.render_level >= RENDER_L1 and PLAYWRIGHT_AVAILABLE:
             return self._fetch_with_playwright(url)
         return self._fetch_with_requests(url)
 
@@ -318,7 +319,7 @@ class WebsiteCloner:
 
         logger.info(f"Starting clone of {self.seed_url}")
         logger.info(f"Output directory: {self.output_dir}")
-        logger.info(f"Max pages: {self.max_pages}, JS render: {self.render_js}")
+        logger.info(f"Max pages: {self.max_pages}, Render level: {self.render_level}")
 
         # Discover sitemap.xml for additional crawl seeds
         sitemap_url = urljoin(self.base_url, "/sitemap.xml")
@@ -408,7 +409,7 @@ def clone_website_job(config: dict, progress_callback=None) -> str:
         seed_url=config["url"],
         output_dir=config["output"],
         max_pages=config.get("max_pages", 100),
-        render_js=config.get("render_js", False),
+        render_level=config.get("render_level", RENDER_L0),
         follow_domains=config.get("follow_domains", False),
         delay=config.get("delay", 0.2),
         timeout=config.get("timeout", 30),
@@ -423,7 +424,7 @@ def clone_website(
     url: str,
     output_dir: str = "cloned_sites",
     max_pages: int = 100,
-    render_js: bool = False,
+    render_level: int = RENDER_L0,
     follow_domains: bool = False,
     delay: float = 0.2,
     progress_callback=None,
@@ -435,7 +436,7 @@ def clone_website(
         "url": url,
         "output": output_dir,
         "max_pages": max_pages,
-        "render_js": render_js,
+        "render_level": render_level,
         "follow_domains": follow_domains,
         "delay": delay,
         "scroll_depth": scroll_depth,
@@ -457,6 +458,7 @@ def main():
         epilog="""\
 Examples:
   python cloner.py https://example.com -o mysite -n 50
+  python cloner.py https://example.com --render l2
   python cloner.py https://example.com --js
   python cloner.py https://example.com --all-domains --delay 0.5
         """,
@@ -476,9 +478,15 @@ Examples:
         help="Maximum pages to clone (default: 100)",
     )
     parser.add_argument(
+        "--render",
+        choices=["l0", "l1", "l2"],
+        default="l0",
+        help="Render fidelity level: l0=static, l1=basic JS, l2=full JS (default: l0)",
+    )
+    parser.add_argument(
         "--js",
         action="store_true",
-        help="Enable JavaScript rendering (requires Playwright)",
+        help="Alias for --render l2 (requires Playwright)",
     )
     parser.add_argument(
         "--all-domains",
@@ -518,13 +526,16 @@ Examples:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    if args.js and not PLAYWRIGHT_AVAILABLE:
+    render_str = "l2" if args.js else args.render
+    if render_str != "l0" and not PLAYWRIGHT_AVAILABLE:
         logger.warning("Playwright not installed. Falling back to static mode.")
         logger.info(
             "To enable JS rendering, run: "
             "pip install playwright && playwright install chromium"
         )
-        args.js = False
+        render_str = "l0"
+
+    render_map = {"l0": RENDER_L0, "l1": RENDER_L1, "l2": RENDER_L2}
 
     def progress(cloned, total, url):
         print(f"  Progress: {cloned}/{total} pages cloned")
@@ -533,7 +544,7 @@ Examples:
         url=args.url,
         output_dir=args.output,
         max_pages=args.max_pages,
-        render_js=args.js,
+        render_level=render_map[render_str],
         follow_domains=args.all_domains,
         delay=args.delay,
         progress_callback=progress,
