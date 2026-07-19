@@ -18,6 +18,10 @@ test_clone_*
 # IDE
 .vscode/
 .idea/
+.opencode/
+
+# Agent / project metadata
+.hermes/
 
 # OS
 .DS_Store

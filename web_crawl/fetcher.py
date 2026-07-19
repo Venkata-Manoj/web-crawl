@@ -1,12 +1,17 @@
 """HTTP / Playwright / parallel fetchers for Website Cloner v2."""
 
+import datetime
+import email.utils
 import logging
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
+
+from .config import MAX_ASSET_SIZE, MAX_TOTAL_BYTES
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +38,48 @@ class HTTPFetcher:
         etags: Optional[dict] = None,
         last_modified: Optional[dict] = None,
         assets_lock: Optional[threading.Lock] = None,
+        max_asset_size: int = MAX_ASSET_SIZE,
+        max_total_bytes: int = MAX_TOTAL_BYTES,
+        rate_limiter: Optional["DomainRateLimiter"] = None,  # noqa: F821
     ):
         self.session = session
         self.delay = delay
         self.timeout = timeout
         self.max_retries = max_retries
+        self.max_asset_size = max_asset_size
+        self.max_total_bytes = max_total_bytes
+        self.rate_limiter = rate_limiter
         self._assets_downloaded = (
             assets_downloaded if assets_downloaded is not None else set()
         )
         self._etags = etags if etags is not None else {}
         self._last_modified = last_modified if last_modified is not None else {}
         self._assets_lock = assets_lock if assets_lock is not None else threading.Lock()
+        self._total_downloaded: int = 0
+
+    # ------------------------------------------------------------------
+    # Retry-After helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_retry_after(value: Optional[str]) -> Optional[float]:
+        """Parse ``Retry-After`` header value (seconds-int or HTTP-date).
+
+        Returns the number of seconds to wait, or ``None`` if unparseable.
+        """
+        if not value:
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            pass
+        try:
+            parsed = email.utils.parsedate_to_datetime(value)
+            now = datetime.datetime.now(datetime.timezone.utc)
+            delta = parsed - now
+            return max(0.0, delta.total_seconds())
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Page fetching
@@ -56,8 +92,19 @@ class HTTPFetcher:
         """
         for attempt in range(self.max_retries):
             try:
+                if self.rate_limiter:
+                    self.rate_limiter.acquire(urlparse(url).netloc)
                 time.sleep(self.delay)
                 resp = self.session.get(url, timeout=self.timeout)
+                if resp.status_code == 429:
+                    retry_after = self._parse_retry_after(
+                        resp.headers.get("Retry-After")
+                    )
+                    if retry_after is not None:
+                        time.sleep(retry_after)
+                    else:
+                        time.sleep(2**attempt)
+                    continue
                 resp.raise_for_status()
                 content_type = resp.headers.get("Content-Type", "")
                 if "text/html" in content_type or "text/plain" in content_type:
@@ -86,6 +133,9 @@ class HTTPFetcher:
 
         Returns the raw bytes, or ``None`` if the asset was already
         downloaded or unreachable.
+
+        Enforces per-asset (50 MB) and total (2 GB) size limits, streaming
+        the response body in 64 KiB chunks.
         """
         if url in self._assets_downloaded:
             return None
@@ -94,6 +144,9 @@ class HTTPFetcher:
 
         for attempt in range(self.max_retries):
             try:
+                if self.rate_limiter:
+                    self.rate_limiter.acquire(urlparse(url).netloc)
+
                 headers = {}
                 if url in self._etags:
                     headers["If-None-Match"] = self._etags[url]
@@ -103,6 +156,15 @@ class HTTPFetcher:
                 resp = self.session.get(
                     url, timeout=self.timeout, stream=True, headers=headers
                 )
+                if resp.status_code == 429:
+                    retry_after = self._parse_retry_after(
+                        resp.headers.get("Retry-After")
+                    )
+                    if retry_after is not None:
+                        time.sleep(retry_after)
+                    else:
+                        time.sleep(2**attempt)
+                    continue
                 if resp.status_code == 304:
                     self._assets_downloaded.add(url)
                     return None
@@ -111,7 +173,33 @@ class HTTPFetcher:
                 if not content_type:
                     content_type = resp.headers.get("Content-Type", "")
 
-                content = resp.content
+                chunks = []
+                asset_total = 0
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if not chunk:
+                        continue
+                    asset_total += len(chunk)
+                    if asset_total > self.max_asset_size:
+                        logger.warning(
+                            f"Asset {url} exceeds {self.max_asset_size} byte limit, "
+                            "aborting download"
+                        )
+                        return None
+                    chunks.append(chunk)
+
+                if not chunks:
+                    return None
+
+                with self._assets_lock:
+                    if self._total_downloaded + asset_total > self.max_total_bytes:
+                        logger.warning(
+                            f"Total download would exceed "
+                            f"{self.max_total_bytes} byte limit"
+                        )
+                        return None
+                    self._total_downloaded += asset_total
+
+                content = b"".join(chunks)
                 etag = resp.headers.get("ETag")
                 if etag:
                     self._etags[url] = etag
@@ -304,7 +392,7 @@ class PlaywrightFetcher:
 class ParallelFetcher:
     """Download multiple assets concurrently via ``ThreadPoolExecutor``."""
 
-    def __init__(self, max_workers: int = 10):
+    def __init__(self, max_workers: int = 4):
         self.max_workers = max_workers
 
     def fetch_all(

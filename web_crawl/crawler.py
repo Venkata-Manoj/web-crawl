@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 import urllib.robotparser
 
 from .config import PLAYWRIGHT_AVAILABLE
+from .rate_limiter import DomainRateLimiter
 from .rewriter import URLRewriter
 from .storage import Storage
 from .fetcher import HTTPFetcher, PlaywrightFetcher, ParallelFetcher
@@ -69,12 +70,12 @@ class WebsiteCloner:
         max_pages: int = 100,
         render_js: bool = False,
         follow_domains: bool = False,
-        delay: float = 0.2,
+        delay: float = 0,
         timeout: int = 30,
         max_retries: int = 3,
         scroll_depth: int = 5,
         wait_ms: int = 2000,
-        max_workers: int = 10,
+        max_workers: int = 4,
     ):
         # --- Store all parameters --------------------------------------------
         self.seed_url = seed_url
@@ -102,6 +103,8 @@ class WebsiteCloner:
         self._assets_lock = threading.Lock()
         self._etags: dict[str, str] = {}
         self._last_modified: dict[str, str] = {}
+        self._crawl_lock = threading.RLock()
+        self._rate_limiter = DomainRateLimiter()
 
         # --- Shared requests session -----------------------------------------
         self.session = requests.Session()
@@ -119,7 +122,7 @@ class WebsiteCloner:
         )
 
         # ---- Sub-module instances -------------------------------------------
-        self.rewriter = URLRewriter(seed_url)
+        self.rewriter = URLRewriter(seed_url, lock=self._crawl_lock)
         self.storage = Storage()
         self.http_fetcher = HTTPFetcher(
             session=self.session,
@@ -130,6 +133,7 @@ class WebsiteCloner:
             etags=self._etags,
             last_modified=self._last_modified,
             assets_lock=self._assets_lock,
+            rate_limiter=self._rate_limiter,
         )
         self.pw_fetcher = PlaywrightFetcher(
             timeout=self.timeout,
@@ -154,6 +158,7 @@ class WebsiteCloner:
             follow_domains=self.follow_domains,
             start_domain=self.start_domain,
             parallel_fetcher=self.parallel_fetcher,
+            crawl_lock=self._crawl_lock,
         )
 
     # ======================================================================

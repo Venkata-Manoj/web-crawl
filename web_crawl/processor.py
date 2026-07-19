@@ -7,6 +7,7 @@ processes CSS ``url()`` and ``@import`` references.
 import logging
 import os
 import re
+import threading
 from typing import Callable, Optional, Set
 from urllib.parse import urljoin
 
@@ -113,6 +114,7 @@ class HTMLProcessor:
         follow_domains: bool,
         start_domain: str,
         parallel_fetcher: "ParallelFetcher",  # noqa: F821
+        crawl_lock: Optional["threading.RLock"] = None,  # noqa: F821
     ):
         self.rewriter = rewriter
         self._download_asset = download_asset_fn
@@ -125,6 +127,7 @@ class HTMLProcessor:
         self.follow_domains = follow_domains
         self.start_domain = start_domain
         self._parallel_fetcher = parallel_fetcher
+        self._crawl_lock = crawl_lock
 
     # ------------------------------------------------------------------
     # Convenience accessors that delegate to the rewriter
@@ -343,8 +346,15 @@ class HTMLProcessor:
             if match:
                 redirect_url = urljoin(url, match.group(1))
                 norm = self._normalize_url(redirect_url)
-                if norm not in self._visited:
-                    self._visited.add(norm)
-                    self._queue.append(norm)
+                lock = self._crawl_lock
+                if lock:
+                    lock.acquire()
+                try:
+                    if norm not in self._visited:
+                        self._visited.add(norm)
+                        self._queue.append(norm)
+                finally:
+                    if lock:
+                        lock.release()
 
         return str(soup), page_links

@@ -75,6 +75,9 @@ KNOWN_EXTS = {
     ".aspx",
 }
 
+MAX_ASSET_SIZE: int = 52428800  # 50 MB
+MAX_TOTAL_BYTES: int = 2147483648  # 2 GB
+
 ASSET_ATTRS = {
     "img": ["src", "srcset", "data-src", "data-srcset"],
     "script": ["src"],
@@ -112,4 +115,4 @@ class Config:
     max_retries: int = 3
     scroll_depth: int = 5
     wait_ms: int = 2000
-    max_workers: int = 10
+    max_workers: int = 4

@@ -1,6 +1,7 @@
 """URL rewriting and local-path mapping for Website Cloner v2."""
 
 import os
+import threading
 from typing import Dict, Optional
 from urllib.parse import unquote_plus, urlparse, urlunparse
 
@@ -14,11 +15,12 @@ class URLRewriter:
     the same URL always produces the same relative path.
     """
 
-    def __init__(self, seed_url: str):
+    def __init__(self, seed_url: str, lock: Optional[threading.RLock] = None):
         parsed = urlparse(seed_url)
         self.start_domain = parsed.netloc
         self.base_url = f"{parsed.scheme}://{parsed.netloc}"
         self.url_to_local: Dict[str, str] = {}
+        self._lock = lock
 
     # ------------------------------------------------------------------
     # URL normalisation
@@ -62,34 +64,41 @@ class URLRewriter:
         so filenames stay clean even when upstream CSS uses
         ``url('font.woff?v=...')``.
         """
-        if url in self.url_to_local:
-            return self.url_to_local[url]
+        lock = self._lock
+        if lock:
+            lock.acquire()
+        try:
+            if url in self.url_to_local:
+                return self.url_to_local[url]
 
-        parsed = urlparse(url)
-        clean_path = unquote_plus(parsed.path)
-        if "?" in clean_path:
-            clean_path = clean_path.split("?")[0]
+            parsed = urlparse(url)
+            clean_path = unquote_plus(parsed.path)
+            if "?" in clean_path:
+                clean_path = clean_path.split("?")[0]
 
-        if not clean_path or clean_path == "/":
-            local_path = "index.html"
-        else:
-            local_path = clean_path.lstrip("/")
-
-        ext = os.path.splitext(local_path)[1].lower()
-
-        if not ext or ext not in KNOWN_EXTS:
-            if content_type:
-                mime = content_type.split(";")[0].strip().lower()
-                ext = CONTENT_TYPE_EXT.get(mime, ".html")
-                if not os.path.splitext(local_path)[1]:
-                    local_path += ext
-            elif local_path.endswith("/"):
-                local_path += "index.html"
+            if not clean_path or clean_path == "/":
+                local_path = "index.html"
             else:
-                local_path += ".html"
+                local_path = clean_path.lstrip("/")
 
-        self.url_to_local[url] = local_path
-        return local_path
+            ext = os.path.splitext(local_path)[1].lower()
+
+            if not ext or ext not in KNOWN_EXTS:
+                if content_type:
+                    mime = content_type.split(";")[0].strip().lower()
+                    ext = CONTENT_TYPE_EXT.get(mime, ".html")
+                    if not os.path.splitext(local_path)[1]:
+                        local_path += ext
+                elif local_path.endswith("/"):
+                    local_path += "index.html"
+                else:
+                    local_path += ".html"
+
+            self.url_to_local[url] = local_path
+            return local_path
+        finally:
+            if lock:
+                lock.release()
 
     # ------------------------------------------------------------------
     # Path-traversal guard (delegates to security module)
