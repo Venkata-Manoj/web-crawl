@@ -3,7 +3,7 @@
 Flask Web UI for Website Cloner.
 
 Provides a web interface for cloning websites with live progress tracking.
-Runs each clone in a background thread, tracks jobs in an in-memory JOBS dict,
+Runs each clone in a background thread, tracks jobs via JobStore,
 polls /status/<id> for live progress, and zips the output folder for /download/<id>.
 """
 
@@ -16,11 +16,11 @@ from datetime import datetime
 from flask import Flask, Response, jsonify, request
 
 from cloner import clone_website_job
+from web_crawl.webjobs import JobStore
 
 app = Flask(__name__)
 
-JOBS = {}
-JOBS_LOCK = threading.Lock()
+job_store = JobStore()
 
 PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -138,7 +138,7 @@ PAGE = """<!DOCTYPE html>
                 follow_domains: document.getElementById('allDomains').checked,
             };
 
-            fetch('/api/clone', {
+            fetch('/api/v1/clone', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(config)
@@ -233,7 +233,7 @@ PAGE = """<!DOCTYPE html>
         }
 
         function pollJobs() {
-            fetch('/api/jobs')
+            fetch('/api/v1/jobs')
                 .then(r => r.json())
                 .then(data => {
                     let allDone = true;
@@ -264,25 +264,13 @@ def run_clone_job(job_id: str, config: dict):
     """Run a clone job in a background thread."""
 
     def progress(cloned, total, url):
-        with JOBS_LOCK:
-            if job_id in JOBS:
-                JOBS[job_id]["pages_cloned"] = cloned
-                JOBS[job_id]["max_pages"] = total
-                JOBS[job_id]["current_url"] = url
+        job_store.update(job_id, pages_cloned=cloned, max_pages=total, current_url=url)
 
     try:
         clone_website_job(config, progress_callback=progress)
-
-        with JOBS_LOCK:
-            if job_id in JOBS:
-                JOBS[job_id]["status"] = "done"
-                JOBS[job_id]["output_dir"] = config["output"]
-
+        job_store.update(job_id, status="done", output_dir=config["output"])
     except Exception as e:
-        with JOBS_LOCK:
-            if job_id in JOBS:
-                JOBS[job_id]["status"] = "error"
-                JOBS[job_id]["error"] = str(e)
+        job_store.update(job_id, status="error", error=str(e))
 
 
 @app.route("/")
@@ -291,6 +279,7 @@ def index():
 
 
 @app.route("/api/clone", methods=["POST"])
+@app.route("/api/v1/clone", methods=["POST"])
 def api_clone():
     data = request.get_json()
     if not data or "url" not in data:
@@ -314,20 +303,7 @@ def api_clone():
         output_dir = f"cloned_sites/{datetime.now().strftime('%Y%m%d%H%M%S')}"
     data["output"] = output_dir
 
-    job_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
-
-    with JOBS_LOCK:
-        JOBS[job_id] = {
-            "id": job_id,
-            "url": url,
-            "status": "running",
-            "pages_cloned": 0,
-            "max_pages": data.get("max_pages", 100),
-            "current_url": "",
-            "output_dir": "",
-            "error": None,
-            "started_at": datetime.now().isoformat(),
-        }
+    job_id = job_store.create(url, max_pages=data.get("max_pages", 100))
 
     thread = threading.Thread(target=run_clone_job, args=(job_id, data), daemon=True)
     thread.start()
@@ -336,25 +312,26 @@ def api_clone():
 
 
 @app.route("/api/jobs")
+@app.route("/api/v1/jobs")
 def api_jobs():
-    with JOBS_LOCK:
-        return jsonify(JOBS)
+    return jsonify(job_store.list())
 
 
 @app.route("/api/status/<job_id>")
+@app.route("/api/v1/status/<job_id>")
 def api_status(job_id):
-    with JOBS_LOCK:
-        if job_id not in JOBS:
-            return jsonify({"error": "Job not found"}), 404
-        return jsonify(JOBS[job_id])
+    job = job_store.get(job_id)
+    if job is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
 
 
 @app.route("/download/<job_id>")
 def download_zip(job_id):
-    with JOBS_LOCK:
-        if job_id not in JOBS:
-            return jsonify({"error": "Job not found"}), 404
-        output_dir = JOBS[job_id].get("output_dir", "")
+    job = job_store.get(job_id)
+    if job is None:
+        return jsonify({"error": "Job not found"}), 404
+    output_dir = job.get("output_dir", "")
 
     if not output_dir or not os.path.exists(output_dir):
         return jsonify({"error": "Output directory not found"}), 404
@@ -372,17 +349,19 @@ def download_zip(job_id):
         zip_buffer.getvalue(),
         mimetype="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{os.path.basename(output_dir)}.zip"'
+            "Content-Disposition": (
+                f'attachment; filename="{os.path.basename(output_dir)}.zip"'
+            )
         },
     )
 
 
 @app.route("/output/<job_id>")
 def view_output(job_id):
-    with JOBS_LOCK:
-        if job_id not in JOBS:
-            return jsonify({"error": "Job not found"}), 404
-        output_dir = JOBS[job_id].get("output_dir", "")
+    job = job_store.get(job_id)
+    if job is None:
+        return jsonify({"error": "Job not found"}), 404
+    output_dir = job.get("output_dir", "")
 
     if not output_dir or not os.path.exists(output_dir):
         return jsonify({"error": "Output directory not found"}), 404
