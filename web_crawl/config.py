@@ -82,6 +82,37 @@ RENDER_L0 = 0
 RENDER_L1 = 1
 RENDER_L2 = 2
 
+# ---------------------------------------------------------------------------
+# Preset configurations
+# ---------------------------------------------------------------------------
+
+PRESETS = {
+    "static-blog": {
+        "delay": 0.5,
+        "max_workers": 2,
+        "render_level": RENDER_L0,
+        "max_retries": 3,
+        "max_pages": 500,
+        "scroll_depth": 1,
+    },
+    "spa-snapshot": {
+        "delay": 0,
+        "max_workers": 4,
+        "render_level": RENDER_L2,
+        "max_retries": 2,
+        "max_pages": 100,
+        "scroll_depth": 10,
+    },
+    "polite": {
+        "delay": 2,
+        "max_workers": 1,
+        "render_level": RENDER_L0,
+        "max_retries": 5,
+        "max_pages": 50,
+        "scroll_depth": 1,
+    },
+}
+
 ASSET_ATTRS = {
     "img": ["src", "srcset", "data-src", "data-srcset"],
     "script": ["src"],

@@ -18,7 +18,13 @@ import requests
 from bs4 import BeautifulSoup
 import urllib.robotparser
 
-from .config import PLAYWRIGHT_AVAILABLE, RENDER_L0, RENDER_L1, RENDER_L2
+from .config import (
+    PLAYWRIGHT_AVAILABLE,
+    PRESETS,
+    RENDER_L0,
+    RENDER_L1,
+    RENDER_L2,
+)
 from .rate_limiter import DomainRateLimiter
 from .rewriter import URLRewriter
 from .storage import Storage
@@ -460,6 +466,9 @@ Examples:
   python cloner.py https://example.com -o mysite -n 50
   python cloner.py https://example.com --render l2
   python cloner.py https://example.com --js
+  python cloner.py https://example.com --preset polite
+  python cloner.py https://example.com --preset spa-snapshot
+  python cloner.py https://example.com --preset static-blog --delay 1
   python cloner.py https://example.com --all-domains --delay 0.5
         """,
     )
@@ -487,6 +496,12 @@ Examples:
         "--js",
         action="store_true",
         help="Alias for --render l2 (requires Playwright)",
+    )
+    parser.add_argument(
+        "--preset",
+        choices=["static-blog", "spa-snapshot", "polite"],
+        help="Use a preset configuration profile (overrides individual flags unless "
+        "explicitly set)",
     )
     parser.add_argument(
         "--all-domains",
@@ -522,6 +537,33 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    if args.preset:
+        preset = PRESETS[args.preset]
+        # Apply preset values — these will be overridden by explicit CLI flags
+        # because argparse already parsed them
+        if args.delay == 0.2 and "delay" in preset:
+            args.delay = preset["delay"]
+        if args.max_workers == 4 and "max_workers" in preset:
+            args.max_workers = preset["max_workers"]
+        if args.max_retries == 3 and "max_retries" in preset:
+            args.max_retries = preset["max_retries"]
+        if args.max_pages == 100 and "max_pages" in preset:
+            args.max_pages = preset["max_pages"]
+        if args.scroll_depth == 5 and "scroll_depth" in preset:
+            args.scroll_depth = preset["scroll_depth"]
+        render_map_pre = {"l0": RENDER_L0, "l1": RENDER_L1, "l2": RENDER_L2}
+        preset_render = preset.get("render_level")
+        if (
+            preset_render is not None
+            and not args.js
+            and args.render == "l0"  # still at default
+        ):
+            # Find the render string for the preset's render level
+            for k, v in render_map_pre.items():
+                if v == preset_render:
+                    args.render = k
+                    break
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
