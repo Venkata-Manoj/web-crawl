@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from cloner import WebsiteCloner
+from web_crawl.security import safe_path
 
 # =============================================================================
 # _normalize_url
@@ -271,6 +272,63 @@ class TestSafePath(unittest.TestCase):
 
 
 # =============================================================================
+# safe_path (standalone function from web_crawl.security)
+# =============================================================================
+
+
+class TestSafePathWindows(unittest.TestCase):
+    """safe_path handles Windows-style paths correctly (on any OS)."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_backslash_path_handled(self):
+        """Windows backslash path is converted to forward-slash path."""
+        result = safe_path("folder\\file.html", self.temp_dir)
+        # The path should be usable and not contain literal backslashes
+        # that would cause issues on any OS
+        self.assertNotIn("\\", result)
+        self.assertTrue(
+            result.endswith("file.html") or result.endswith("folder/file.html")
+        )
+
+    def test_drive_letter_path_handled(self):
+        """Windows drive-letter path does not raise and returns something safe."""
+        # On Linux, "C:\\file.html" is treated as a literal filename
+        result = safe_path("C:\\\\file.html", self.temp_dir)
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_long_filename_hashed(self):
+        """Filenames longer than 200 chars are hashed."""
+        long_name = "a" * 250 + ".html"
+        result = safe_path(long_name, self.temp_dir)
+        # Should be hashed — .html extension preserved, name is md5[:16]
+        self.assertEqual(len(os.path.splitext(result)[0]), 16)
+        self.assertTrue(result.endswith(".html"))
+
+    def test_long_filename_no_extension_hashed(self):
+        """Filenames longer than 200 chars without extension are hashed."""
+        long_name = "a" * 250
+        result = safe_path(long_name, self.temp_dir)
+        # Should be hashed - no extension
+        self.assertEqual(len(result), 16)
+
+    def test_posix_path_still_works(self):
+        """Normal POSIX-style paths are unchanged by safe_path."""
+        result = safe_path("about.html", self.temp_dir)
+        self.assertEqual(result, "about.html")
+
+    def test_nested_posix_path_preserved(self):
+        """Nested POSIX paths pass through unchanged."""
+        result = safe_path("blog/post.html", self.temp_dir)
+        self.assertEqual(result, "blog/post.html")
+
+
+# =============================================================================
 # _is_private_ip
 # =============================================================================
 
@@ -485,6 +543,102 @@ class TestBfsCrawlBehavior(unittest.TestCase):
         # pages may be in any order due to BFS deque, but should both be visited
         self.assertIn("http://example.com/page1", calls)
         self.assertIn("http://example.com/page2", calls)
+
+    # -- robots.txt tests ------------------------------------------------
+
+    def test_robots_disallows_secret_paths(self):
+        """URLs under /secret/ are skipped when robots.txt disallows /secret/."""
+        cloner = self._make_cloner(max_pages=10)
+        self._mock_assets(cloner)
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(
+                    links=["/secret/page1", "/about"]
+                ),
+                "http://example.com/about": self._make_html(),
+                "http://example.com/secret/page1": self._make_html(),
+            },
+        )
+
+        with mock.patch("urllib.robotparser.RobotFileParser") as mock_rp_class:
+            mock_rp = mock_rp_class.return_value
+            # Disallow any URL whose path contains /secret/
+            mock_rp.can_fetch.side_effect = lambda agent, url: "/secret/" not in url
+            cloner.clone()
+
+        # Seed + /about should be fetched; /secret/page1 should never be fetched
+        mock_fetch.assert_any_call("http://example.com/")
+        mock_fetch.assert_any_call("http://example.com/about")
+        for call_args in mock_fetch.call_args_list:
+            self.assertNotEqual(call_args[0][0], "http://example.com/secret/page1")
+
+    def test_robots_allows_everything(self):
+        """All URLs are crawled when robots.txt allows everything."""
+        cloner = self._make_cloner(max_pages=10)
+        self._mock_assets(cloner)
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/page1", "/page2"]),
+                "http://example.com/page1": self._make_html(),
+                "http://example.com/page2": self._make_html(),
+            },
+        )
+
+        with mock.patch("urllib.robotparser.RobotFileParser") as mock_rp_class:
+            mock_rp = mock_rp_class.return_value
+            mock_rp.can_fetch.return_value = True  # allow everything
+            cloner.clone()
+
+        mock_fetch.assert_any_call("http://example.com/")
+        mock_fetch.assert_any_call("http://example.com/page1")
+        mock_fetch.assert_any_call("http://example.com/page2")
+
+    def test_robots_no_robots_txt(self):
+        """All URLs are crawled when robots.txt is absent (self._rp is None)."""
+        cloner = self._make_cloner(max_pages=10)
+        self._mock_assets(cloner)
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/page1", "/page2"]),
+                "http://example.com/page1": self._make_html(),
+                "http://example.com/page2": self._make_html(),
+            },
+        )
+
+        with mock.patch("urllib.robotparser.RobotFileParser") as mock_rp_class:
+            mock_rp = mock_rp_class.return_value
+            mock_rp.read.side_effect = Exception("No robots.txt")
+            cloner.clone()
+
+        # self._rp will be None → no robots filtering → all URLs fetched
+        mock_fetch.assert_any_call("http://example.com/")
+        mock_fetch.assert_any_call("http://example.com/page1")
+        mock_fetch.assert_any_call("http://example.com/page2")
+
+    def test_robots_disallows_seed_url_still_fetched(self):
+        """The seed URL is always fetched even if robots.txt disallows it."""
+        cloner = self._make_cloner(max_pages=10)
+        self._mock_assets(cloner)
+        mock_fetch = self._mock_fetch(
+            cloner,
+            {
+                "http://example.com/": self._make_html(links=["/page1"]),
+                "http://example.com/page1": self._make_html(),
+            },
+        )
+
+        with mock.patch("urllib.robotparser.RobotFileParser") as mock_rp_class:
+            mock_rp = mock_rp_class.return_value
+            # Disallow everything — but seed should still be fetched
+            mock_rp.can_fetch.return_value = False
+            cloner.clone()
+
+        # Seed is fetched; non-seed pages are skipped
+        mock_fetch.assert_any_call("http://example.com/")
+        self.assertEqual(mock_fetch.call_count, 1)
 
     def test_max_pages_stops_mid_crawl(self):
         """Cloner stops mid-crawl when max_pages is reached."""
