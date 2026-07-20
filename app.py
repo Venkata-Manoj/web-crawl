@@ -341,7 +341,7 @@ advToggle.addEventListener('click', function(){
 // ── Toast ────────────────────────────────────────────────────────────
 function toast(msg, type){
   var c = $('toasts');
-  var icon = type === 'er' ? '\u26A0' : type === 'ok' ? '\u2714' : '\u2139';
+  var icon = type === 'er' ? '\u26a0' : type === 'ok' ? '\u2714' : '\u2139';
   var el = document.createElement('div');
   el.className = 'toast ' + type;
   el.innerHTML = '<span class="toast-i">' + icon + '</span>' + esc(msg);
@@ -442,7 +442,7 @@ function addJob(id, url){
   card.querySelector('.log-tgl').addEventListener('click', function(){
     var box = $('lb' + id);
     box.classList.toggle('open');
-    this.innerHTML = box.classList.contains('open') ? '\u25BC Log' : '\u25B6 Log';
+    this.innerHTML = box.classList.contains('open') ? '\u25bc Log' : '\u25b6 Log';
   });
 
   jobsList.insertBefore(card, jobsList.firstChild);
@@ -492,7 +492,7 @@ function addLog(jid, txt, cls){
   var e = document.createElement('div');
   e.className = 'log-e';
   var t = new Date().toLocaleTimeString();
-  var ic = cls === 's' ? '\u2714 ' : cls === 'e' ? '\u26A0 ' : '';
+  var ic = cls === 's' ? '\u2714 ' : cls === 'e' ? '\u26a0 ' : '';
   e.innerHTML = '<span class="log-t">' + esc(t) + '</span>' + (ic ? '<span class="log-' + cls + '">' + ic + '</span>' : '') + '<span class="log-u">' + esc(txt.slice(0, 130)) + '</span>';
   out.appendChild(e);
   out.scrollTop = out.scrollHeight;
